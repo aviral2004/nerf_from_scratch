@@ -7,4 +7,4 @@ TODOS:
 - [x] Impl: Network
 - [x] Impl: Dataloader
 - [x] Impl: Loss Function, Optimizer, and Metric
-- [] Impl: Hyperparameter Tuning
+- [x] Impl: Hyperparameter Tuning
