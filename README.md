@@ -8,3 +8,15 @@ TODOS:
 - [x] Impl: Dataloader
 - [x] Impl: Loss Function, Optimizer, and Metric
 - [x] Impl: Hyperparameter Tuning
+
+## Part 2: Fit a Neural Radiance Field from Multi-view Images
+
+TODOS:
+
+- [] Impl: camera to world transformation
+- [] Impl: pixel to camera transformation
+- [] Impl: ray generation
+- [] Impl: Sampling rays from images
+- [] Impl: Sampling points along rays
+- [] Impl: Network
+- [] Impl: Volume rendering equation
