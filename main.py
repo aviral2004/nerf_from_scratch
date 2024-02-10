@@ -18,11 +18,11 @@ class PositionalEncoding(nn.Module):
 
 
 class Net(nn.Module):
-    def __init__(self, device, input_size=2):
+    def __init__(self, device, input_size=2, L=10):
         super(Net, self).__init__()
-
-        self.pe = PositionalEncoding().to(device)
-        pos_emb_size = 10*2*input_size + input_size
+        
+        self.pe = PositionalEncoding(L=L).to(device)
+        pos_emb_size = (L*2 + 1)*input_size
         self.mlp = nn.Sequential(
             nn.Linear(pos_emb_size, 256),
             nn.ReLU(),
@@ -34,7 +34,11 @@ class Net(nn.Module):
             nn.Sigmoid(),
         ).to(device)
 
+        self.device = device
+
+
     def forward(self, x):
+        x = x.to(self.device)
         spe = self.pe(x).view(x.shape[0], -1)
         return self.mlp(spe)
     
@@ -59,3 +63,12 @@ class CoordinateDataset(Dataset):
     
 def PSNR(mse):
     return 10 * torch.log10(1/mse)
+
+def inference(model, im_height, im_width):
+    im = torch.zeros(im_height, im_width, 3)
+    for y in range(im_height):
+         for x in range(im_width):
+              im[y, x] = model(torch.tensor([x/im_width, y/im_height]).float().unsqueeze(0)).squeeze().detach()
+    im = im.numpy()
+    im = (im*255).astype(np.uint8)
+    return im
