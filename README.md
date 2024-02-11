@@ -13,10 +13,10 @@ TODOS:
 
 TODOS:
 
-- [] Impl: camera to world transformation
-- [] Impl: pixel to camera transformation
-- [] Impl: ray generation
-- [] Impl: Sampling rays from images
-- [] Impl: Sampling points along rays
+- [x] Impl: camera to world transformation
+- [x] Impl: pixel to camera transformation
+- [x] Impl: ray generation
+- [x] Impl: Sampling rays from images
+- [x] Impl: Sampling points along rays
 - [] Impl: Network
 - [] Impl: Volume rendering equation
