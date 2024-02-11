@@ -6,28 +6,29 @@ def transform(c2w, x_c):
     """
         Inputs:
             c2w: Nx4x4 matrix containing the inverse of the extrinsic matrix
-            x_c: N x 4 x 1 or Nx4 matrix containing the coordinates to be transformed from camera coordinates to wordl coordinates
+            x_c: Nx3 tensor containing the coordinates to be transformed from camera coordinates to world coordinates
 
         Outputs:
             x_w: transformed coordinates in world space, Nx4x1
     """
-    x_w = torch.matmul(c2w, x_c)
+    x_c = torch.cat([x_c, torch.ones((x_c.shape[0], 1))], dim = 1).unsqueeze(-1) # N x 4 x 1
+    x_w = torch.bmm(c2w, x_c) # Nx4x4 * Nx4x1 = Nx4x1
     return x_w
 
 def pixel_to_camera(K, uv, s):
     """
         Inputs:
-            K: N x 3 x 3 tensor containing the intrinsic matrix
+            K: 3 x 3 tensor containing the intrinsic matrix
             uv: N x 2 tensor containing the pixel coordinates
             s: scalar representing the depth of the point in camera coordinates
 
         Outputs:
             x_c: N x 3 tensor containing the coordinates in camera space
     """
-    o_x = K[:, 0, 2] # N
-    o_y = K[:, 1, 2] # N
+    o_x = K[0, 2] #1
+    o_y = K[1, 2] #1
 
-    f_x, f_y = K[:, 0, 0], K[:, 1, 1] # N
+    f_x, f_y = K[0, 0], K[1, 1] # N
 
     u = uv[:, 0] # N
     v = uv[:, 1] # N
@@ -39,7 +40,7 @@ def pixel_to_camera(K, uv, s):
 def pixel_to_ray(K, c2w, uv):
     """
         Inputs:
-            K: N x 3 x 3 tensor containing the intrinsic matrix
+            K: 3 x 3 tensor containing the intrinsic matrix
             c2w: N x 4 x 4 tensor containing the inverse of the extrinsic matrix
             uv: N x 2 tensor containing the pixel coordinates
 
@@ -47,16 +48,17 @@ def pixel_to_ray(K, c2w, uv):
             r_o: N x 2 tensor containing the origin of the ray in world space
             r_d: N x 3 tensor containing the direction of the ray in world space
     """
-    R = c2w[:, :3, :3] # N x 3 x 3
-    t = c2w[:, :3, 3] # N x 3
+    w2c = torch.inverse(c2w) # N x 4 x 4
+    R = w2c[:, :3, :3] # N x 3 x 3
+    t = w2c[:, :3, 3] # N x 3
 
-    r_o = torch.matmul(-torch.inverse(R), t.unsqueeze(-1)) # Nx3x3 * Nx3x1 = Nx3x1
+    r_o = torch.bmm(-torch.inverse(R), t.unsqueeze(-1)) # Nx3x3 * Nx3x1 = Nx3x1
     r_o = r_o.squeeze(-1) # Nx3
     # make homogenous
     # r_o = torch.cat([r_o, torch.ones((r_o.shape[0], 1))], dim = 1) # N x 4
 
     X_w = pixel_to_camera(K, uv, 1) # Nx3
-    X_w = torch.cat([X_w, torch.ones((X_w.shape[0], 1))], dim = 1).unsqueeze(-1) # N x 4
+    # X_w = torch.cat([X_w, torch.ones((X_w.shape[0], 1))], dim = 1).unsqueeze(-1) # N x 4
     X_w = transform(c2w, X_w).squeeze(-1)[:, :3] # N x 3
     
     r_d = (X_w - r_o) # N x 3
@@ -68,17 +70,20 @@ def pixel_to_ray(K, c2w, uv):
 class RayDataset(Dataset):
     def __init__(self, images, c2w, focal):
         self.ims = images
-        self.im_height = np.array([im.shape[0] for im in self.ims])
-        self.im_width = np.array([im.shape[1] for im in self.ims])
-        self.sizes = self.im_height * self.im_width
+        # self.im_height = np.array([im.shape[0] for im in self.ims])
+        # self.im_width = np.array([im.shape[1] for im in self.ims])
+        # self.sizes = self.im_height * self.im_width
 
-        self.sizes_cumsum = np.cumsum(self.sizes)
-        self.sizes_cumsum = np.insert(self.sizes_cumsum, 0, 0)
+        self.im_height, self.im_width = self.ims.shape[1:3]
+        self.size = self.im_height * self.im_width
 
-        self.K = self.get_intrinsics(1)
+        # self.sizes_cumsum = np.cumsum(self.sizes)
+        # self.sizes_cumsum = np.insert(self.sizes_cumsum, 0, 0)
+
+        self.K = self.get_intrinsic(focal)
         self.c2w = torch.from_numpy(c2w)
 
-    def get_intrinsics(self, focal):
+    def get_intrinsic(self, focal):
         """
             Inputs:
                 focal: scalar representing the focal length
@@ -86,21 +91,15 @@ class RayDataset(Dataset):
             Outputs:
                 K: N x 3 x 3 tensor containing the intrinsic matrix
         """
-        # convert each value in im_width and im_height to an intrinsic matrix
-        K = torch.zeros((len(self.ims), 3, 3), dtype=torch.float64)
-        for i in range(len(self.ims)):
-            K[i, 0, 0] = focal
-            K[i, 1, 1] = focal
-            K[i, 0, 2] = self.im_width[i] / 2
-            K[i, 1, 2] = self.im_height[i] / 2
-            K[i, 2, 2] = 1
-
+        # get a tensor of K
+        K = np.array([[focal, 0, self.im_width / 2], [0, focal, self.im_height / 2], [0, 0, 1]], dtype=np.float64)
+        K = torch.tensor(K, dtype=torch.float64)
         return K
 
     def __len__(self):
-        return sum(self.sizes)
+        return self.ims.shape[0] * self.size
     
-    def sample_rays(self, n_samples):
+    def sample_rays(self, n_samples, bounds=None, indices=None):
         """
             Inputs:
                 n_samples: scalar representing the number of rays to sample
@@ -110,17 +109,32 @@ class RayDataset(Dataset):
                 rays_d: n_samples x 3 tensor containing the direction of the rays in world space
                 pixels: n_samples x 3 tensor containing the color of the pixels
         """
-        # get n_sample numbers between 0 and len
-        idx = np.random.randint(0, 50_000, n_samples)
+        # extra code for testing
+        if bounds is not None:
+            idx = np.random.randint(bounds[0], bounds[1], n_samples)
+        else:
+            if indices is None:
+                # get n_samples random indices from flattened image coords
+                indices = np.random.randint(0, len(self), n_samples)
+            else:
+                n_samples = len(indices)
+                idx = indices
 
         # find which image the idx belongs to
-        im_nums = np.searchsorted(self.sizes_cumsum, idx) - 1
-        y = idx - self.sizes_cumsum[im_nums]
-        x = y % self.im_width[im_nums]
-        y = y // self.im_width[im_nums]
-        uv = torch.tensor([x, y], dtype=torch.float64).T
+        # im_nums = np.searchsorted(self.sizes_cumsum, idx) - 1
+        # y = idx - self.sizes_cumsum[im_nums]
+        # x = y % self.im_width[im_nums]
+        # y = y // self.im_width[im_nums]
+            
+        idx = indices
+        im_nums = idx // self.size
+        y = idx - im_nums * self.size
+        x = y % self.im_width
+        y = y // self.im_width
 
-        rays_o, rays_d = pixel_to_ray(self.K[im_nums], self.c2w[im_nums], uv)
+        uv = torch.tensor([x + 0.5, y + 0.5], dtype=torch.float64).T
+
+        rays_o, rays_d = pixel_to_ray(self.K, self.c2w[im_nums], uv)
         pixels = self.ims[im_nums, y, x] / 255
 
         return rays_o, rays_d, pixels
@@ -135,10 +149,6 @@ class RayDataset(Dataset):
             Outputs:
                 samples: n_samples x 3 tensor containing the samples along the rays
         """
-        print("hello")
-        print(id(rays_o))
-        print(type(rays_o), type(rays_d))
-        print(rays_o.shape, rays_d.shape)
         n_samples = rays_o.shape[0]
         t = torch.linspace(near, far, n_samples)
 

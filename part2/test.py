@@ -1,5 +1,6 @@
 import viser, time  # pip install viser
 import numpy as np
+import torch
 
 from main import *
 
@@ -29,15 +30,16 @@ focal = data["focal"]  # float
 # --- You Need to Implement These ------
 dataset = RayDataset(images_train, c2ws_train, focal)
 rays_o, rays_d, pixels = dataset.sample_rays(100) # Should expect (B, 3)
-print(rays_o.shape, rays_d.shape, pixels.shape)
-print(type(rays_o), type(rays_d), type(pixels))
-print(id(rays_o))
 
 points = dataset.sample_along_rays(rays_o, rays_d, True)
+# convert to numpy
+points = points.numpy()
+rays_o = rays_o.numpy()
+rays_d = rays_d.numpy()
 H, W = images_train.shape[1:3]
 # ---------------------------------------
 
-K = dataset.K
+K = dataset.K.numpy()
 
 server = viser.ViserServer(share=True)
 for i, (image, c2w) in enumerate(zip(images_train, c2ws_train)):
@@ -54,6 +56,13 @@ for i, (o, d) in enumerate(zip(rays_o, rays_d)):
     server.add_spline_catmull_rom(
         f"/rays/{i}", positions=np.stack((o, o + d * 6.0)),
     )
+server.add_point_cloud(
+    f"/samples",
+    colors=np.zeros_like(points).reshape(-1, 3),
+    points=points.reshape(-1, 3),
+    point_size=0.02,
+)
+    
 server.add_point_cloud(
     f"/samples",
     colors=np.zeros_like(points).reshape(-1, 3),
