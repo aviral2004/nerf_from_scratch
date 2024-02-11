@@ -125,7 +125,7 @@ class RayDataset(Dataset):
 
         return rays_o, rays_d, pixels
     
-    def sample_along_rays(rays_o, rays_d, perturb=True, near=2.0, far=6.0, t_width=1):
+    def sample_along_rays(self, rays_o, rays_d, perturb=True, near=2.0, far=6.0, t_width=1):
         """
             Inputs:
                 rays_o: n_samples x 3 tensor containing the origin of the rays in world space
