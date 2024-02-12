@@ -19,4 +19,5 @@ TODOS:
 - [x] Impl: Sampling rays from images
 - [x] Impl: Sampling points along rays
 - [x] Impl: Network
-- [] Impl: Volume rendering equation
+- [x] Impl: Volume rendering equation
+- [ ] Impl: Writing loss function, training loop and putting it all together

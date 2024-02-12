@@ -167,3 +167,24 @@ class RayDataset(Dataset):
     #     rays = pixel_to_ray(self.K[im_num].unsqueeze(0), self.c2w[im_num].unsqueeze(0), uv.unsqueeze(0))
     #     pixel = im[y, x]/255
     #     return *rays, pixel
+
+def volrender(sigmas, rgbs, step_size):
+    """
+        Inputs:
+            sigmas: N x i x 1 tensor containing densities along the ray
+            rgbs: N x i x 3 tensor containing colors along the ray
+            step_size: float value containing delta
+
+        Outputs:
+            rendered_colors: N x 3 tensor containing the final expected color for each ray
+    """
+
+    alpha = 1 - torch.exp(-sigmas * step_size) # Nxix1
+
+    T = torch.cumprod(1 - alpha, dim=1)
+    T = torch.cat([torch.ones((T.shape[0], 1, 1)), T[:, :-1]], dim=1) # Nxix1
+
+    colors = T * alpha * rgbs # Nxix3
+
+    rendered_colors = torch.sum(colors, dim=1) # Nx3
+    return rendered_colors
