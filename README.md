@@ -18,5 +18,5 @@ TODOS:
 - [x] Impl: ray generation
 - [x] Impl: Sampling rays from images
 - [x] Impl: Sampling points along rays
-- [] Impl: Network
+- [x] Impl: Network
 - [] Impl: Volume rendering equation
