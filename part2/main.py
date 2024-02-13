@@ -2,6 +2,9 @@ import torch
 from torch.utils.data import Dataset
 import numpy as np
 
+def PSNR(mse):
+    return 10 * torch.log10(1/mse)
+
 def transform(c2w, x_c):
     """
         Inputs:
@@ -28,7 +31,7 @@ def pixel_to_camera(K, uv, s):
     o_x = K[0, 2] #1
     o_y = K[1, 2] #1
 
-    f_x, f_y = K[0, 0], K[1, 1] # N
+    f_x, f_y = K[0, 0], K[1, 1] # 1
 
     u = uv[:, 0] # N
     v = uv[:, 1] # N
@@ -69,7 +72,7 @@ def pixel_to_ray(K, c2w, uv):
 
 class RayDataset(Dataset):
     def __init__(self, images, c2w, focal):
-        self.ims = images
+        self.ims = torch.from_numpy(images).to(torch.float32)
         # self.im_height = np.array([im.shape[0] for im in self.ims])
         # self.im_width = np.array([im.shape[1] for im in self.ims])
         # self.sizes = self.im_height * self.im_width
@@ -81,7 +84,7 @@ class RayDataset(Dataset):
         # self.sizes_cumsum = np.insert(self.sizes_cumsum, 0, 0)
 
         self.K = self.get_intrinsic(focal)
-        self.c2w = torch.from_numpy(c2w)
+        self.c2w = torch.from_numpy(c2w).to(torch.float32)
 
     def get_intrinsic(self, focal):
         """
@@ -92,8 +95,8 @@ class RayDataset(Dataset):
                 K: N x 3 x 3 tensor containing the intrinsic matrix
         """
         # get a tensor of K
-        K = np.array([[focal, 0, self.im_width / 2], [0, focal, self.im_height / 2], [0, 0, 1]], dtype=np.float64)
-        K = torch.tensor(K, dtype=torch.float64)
+        K = np.array([[focal, 0, self.im_width / 2], [0, focal, self.im_height / 2], [0, 0, 1]])
+        K = torch.tensor(K).to(torch.float32)
         return K
 
     def __len__(self):
@@ -111,11 +114,11 @@ class RayDataset(Dataset):
         """
         # extra code for testing
         if bounds is not None:
-            idx = np.random.randint(bounds[0], bounds[1], n_samples)
+            idx = torch.randint(bounds[0], bounds[1], (n_samples,))
         else:
             if indices is None:
                 # get n_samples random indices from flattened image coords
-                indices = np.random.randint(0, len(self), n_samples)
+                indices = torch.randint(0, len(self), (n_samples,))
             else:
                 n_samples = len(indices)
                 idx = indices
@@ -132,30 +135,30 @@ class RayDataset(Dataset):
         x = y % self.im_width
         y = y // self.im_width
 
-        uv = torch.tensor([x + 0.5, y + 0.5], dtype=torch.float64).T
-
+        uv = torch.stack([x, y], dim=1)
         rays_o, rays_d = pixel_to_ray(self.K, self.c2w[im_nums], uv)
         pixels = self.ims[im_nums, y, x] / 255
 
         return rays_o, rays_d, pixels
     
-    def sample_along_rays(self, rays_o, rays_d, perturb=True, near=2.0, far=6.0, t_width=1):
+    def sample_along_rays(self, rays_o, rays_d, perturb=True, n_samples=64, near=2.0, far=6.0, t_width=1):
         """
             Inputs:
-                rays_o: n_samples x 3 tensor containing the origin of the rays in world space
-                rays_d: n_samples x 3 tensor containing the direction of the rays in world space
+                rays_o: N x 3 tensor containing the origin of the rays in world space
+                rays_d: N x 3 tensor containing the direction of the rays in world space
                 perturb: boolean representing whether to perturb the rays
 
             Outputs:
-                samples: n_samples x 3 tensor containing the samples along the rays
+                samples: N x n_samples x 3 tensor containing the samples along the rays
         """
-        n_samples = rays_o.shape[0]
         t = torch.linspace(near, far, n_samples)
-
         if perturb:
-            t += torch.rand_like(t) * t_width
+            t += torch.rand_like(t) * t_width # n_samples
 
-        samples = rays_o + rays_d * t.unsqueeze(-1)
+        t = t.expand(rays_o.shape[0], n_samples) # N x n_samples
+        t = t.unsqueeze(-1) # N x n_samples x 1
+
+        samples = rays_o.unsqueeze(1) + rays_d.unsqueeze(1) * t # N x n_samples x 3
         return samples
 
     # def __getitem__(self, idx):

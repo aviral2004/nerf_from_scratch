@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import torch.nn as nn
 from math import pi
+from main import volrender
 
 class PositionalEncoding(nn.Module):
     def __init__(self, L=10):
@@ -18,6 +19,8 @@ class Net3d(nn.Module):
     def __init__(self, device, input_size=3):
         super(Net3d, self).__init__()
 
+        self.device = device
+
         self.pe_x = PositionalEncoding(L=10).to(device)
         self.pe_rd = PositionalEncoding(L=4).to(device)
 
@@ -25,9 +28,9 @@ class Net3d(nn.Module):
 
         x_enc_size = emb_size(self.pe_x.L, input_size)
         rd_enc_size = emb_size(self.pe_rd.L, input_size)
-
+        print(x_enc_size, rd_enc_size)
         self.mlp1 = nn.Sequential(
-            nn.Linear(256, 256),
+            nn.Linear(x_enc_size, 256),
             nn.ReLU(), #1
             nn.Linear(256, 256),
             nn.ReLU(), #2
@@ -61,11 +64,26 @@ class Net3d(nn.Module):
         )
 
     def forward(self, x, rd):
-        x = x.to(self.device)
-        rd = x.to(self.device)
+        """
+            Inputs:
+                x: N x n_samples x 3 tensor containing the 3D coordinates of the points
+                rd: N x 3 tensor containing the direction of the rays
 
-        x_enc = self.pe_x(x).flatten(start_dim=1)
-        rd_enc = self.pe_rd(rd).flatten(start_dim=1)
+            Outputs:
+                expected_color: N x 3 tensor containing the expected color of the points
+        """
+
+        x = x.to(self.device) # N x n_samples x 3
+        rd = x.to(self.device) # N x n_samples x 3
+
+        N, n_samples, _ = x.shape
+        rd = rd.expand(N, n_samples, 3)
+
+        x = x.reshape(-1, 3) # N' x 3
+        rd = rd.reshape(-1, 3) # N' x 3
+
+        x_enc = self.pe_x(x).flatten(start_dim=1) # N' x 3*(L*2+1)
+        rd_enc = self.pe_rd(rd).flatten(start_dim=1) # N' x 3*(L*2+1)
 
         emb1 = self.mlp1(x_enc)
         emb1 = torch.cat([emb1, x_enc], dim=-1)
@@ -77,4 +95,7 @@ class Net3d(nn.Module):
         c1 = torch.cat([c1, rd_enc], dim=-1)
         color = self.color_head(c1)
 
-        return color, density
+        color = color.reshape(N, n_samples, 3)
+        density = density.reshape(N, n_samples, 1)
+
+        return volrender(density, color, (6.0 - 2.0) / n_samples)
