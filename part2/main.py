@@ -76,7 +76,7 @@ def pixel_to_ray(K, c2w, uv):
 class RayDataset(Dataset):
     def __init__(self, images, c2w, focal):
         self.ims = torch.from_numpy(images).to(torch.float32)
-        if images.max() > 1:
+        if self.ims.max() > 1:
             self.ims /= 255
         # self.im_height = np.array([im.shape[0] for im in self.ims])
         # self.im_width = np.array([im.shape[1] for im in self.ims])
