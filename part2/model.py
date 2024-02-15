@@ -28,7 +28,7 @@ class Net3d(nn.Module):
 
         x_enc_size = emb_size(self.pe_x.L, input_size)
         rd_enc_size = emb_size(self.pe_rd.L, input_size)
-        print(x_enc_size, rd_enc_size)
+
         self.mlp1 = nn.Sequential(
             nn.Linear(x_enc_size, 256),
             nn.ReLU(), #1
@@ -62,6 +62,8 @@ class Net3d(nn.Module):
             nn.Linear(128, 3),
             nn.Sigmoid()
         )
+
+        self.to(device)
 
     def forward(self, x, rd):
         """
@@ -98,4 +100,4 @@ class Net3d(nn.Module):
         color = color.reshape(N, n_samples, 3)
         density = density.reshape(N, n_samples, 1)
 
-        return volrender(density, color, (6.0 - 2.0) / n_samples)
+        return volrender(density, color, (6.0 - 2.0) / n_samples, device=self.device)

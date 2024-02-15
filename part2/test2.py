@@ -38,16 +38,16 @@ uvs_end = 40_000
 # assert np.all(images_train[0, sample_uvs[:,1], sample_uvs[:,0]] == dataset.pixels[uvs_start:uvs_end])
 
 # # # Uncoment this to display random rays from the first image
-# # indices = np.random.randint(low=0, high=40_000, size=100)
+indices = torch.randint(low=0, high=40_000, size=(100,))
 
 # # # Uncomment this to display random rays from the top left corner of the image
-indices_x = np.random.randint(low=100, high=200, size=100)
-indices_y = np.random.randint(low=0, high=100, size=100)
-indices = indices_x + (indices_y * 200)
+# indices_x = torch.randint(low=100, high=200, size=(100,))
+# indices_y = torch.randint(low=0, high=100, size=(100,))
+# indices = indices_x + (indices_y * 200)
 
 # data = {"rays_o": dataset.rays_o[indices], "rays_d": dataset.rays_d[indices]}
 rays_o, rays_d, pixels = dataset.sample_rays(100, bounds=(uvs_start, uvs_end), indices=indices) # Should expect (B, 3)
-points = dataset.sample_along_rays(rays_o, rays_d, perturb=True, )
+points = dataset.sample_along_rays(rays_o, rays_d, perturb=False, )
 H, W = images_train.shape[1:3]
 K = dataset.K.numpy()
 

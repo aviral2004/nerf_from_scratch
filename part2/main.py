@@ -2,8 +2,11 @@ import torch
 from torch.utils.data import Dataset
 import numpy as np
 
-def PSNR(mse):
-    return 10 * torch.log10(1/mse)
+def PSNR(mse, mse_reduction='mean', N=None):
+    if mse_reduction == 'sum':
+        return -10*torch.log10(mse/N)
+    elif mse_reduction == 'mean':
+        return -10*torch.log10(mse)
 
 def transform(c2w, x_c):
     """
@@ -73,6 +76,8 @@ def pixel_to_ray(K, c2w, uv):
 class RayDataset(Dataset):
     def __init__(self, images, c2w, focal):
         self.ims = torch.from_numpy(images).to(torch.float32)
+        if images.max() > 1:
+            self.ims /= 255
         # self.im_height = np.array([im.shape[0] for im in self.ims])
         # self.im_width = np.array([im.shape[1] for im in self.ims])
         # self.sizes = self.im_height * self.im_width
@@ -135,13 +140,14 @@ class RayDataset(Dataset):
         x = y % self.im_width
         y = y // self.im_width
 
-        uv = torch.stack([x, y], dim=1)
+        uv = torch.stack([x + 0.5, y + 0.5], dim=1)
         rays_o, rays_d = pixel_to_ray(self.K, self.c2w[im_nums], uv)
-        pixels = self.ims[im_nums, y, x] / 255
+        pixels = self.ims[im_nums, y, x]
 
         return rays_o, rays_d, pixels
     
-    def sample_along_rays(self, rays_o, rays_d, perturb=True, n_samples=64, near=2.0, far=6.0, t_width=1):
+    @staticmethod
+    def sample_along_rays(rays_o, rays_d, perturb=True, n_samples=64, near=2.0, far=6.0, t_width=1):
         """
             Inputs:
                 rays_o: N x 3 tensor containing the origin of the rays in world space
@@ -171,7 +177,7 @@ class RayDataset(Dataset):
     #     pixel = im[y, x]/255
     #     return *rays, pixel
 
-def volrender(sigmas, rgbs, step_size):
+def volrender(sigmas, rgbs, step_size, device):
     """
         Inputs:
             sigmas: N x i x 1 tensor containing densities along the ray
@@ -185,9 +191,47 @@ def volrender(sigmas, rgbs, step_size):
     alpha = 1 - torch.exp(-sigmas * step_size) # Nxix1
 
     T = torch.cumprod(1 - alpha, dim=1)
-    T = torch.cat([torch.ones((T.shape[0], 1, 1)), T[:, :-1]], dim=1) # Nxix1
+    T = torch.cat([torch.ones((T.shape[0], 1, 1), device=device), T[:, :-1]], dim=1) # Nxix1
 
     colors = T * alpha * rgbs # Nxix3
 
     rendered_colors = torch.sum(colors, dim=1) # Nx3
     return rendered_colors
+
+def sample_rays_single_image(c2w, K, H, W, device):
+    """
+        Inputs:
+            c2w: 4x4 matrix containing the inverse of the extrinsic matrix
+            K: 3x3 matrix containing the intrinsic matrix
+            H: scalar representing the height of the image
+            W: scalar representing the width of the image
+
+        Outputs:
+            rays_o: H*W x 3 tensor containing the origin of the rays in world space
+            rays_d: H*W x 3 tensor containing the direction of the rays in world space
+    """
+    uv = torch.stack(torch.meshgrid(torch.arange(H), torch.arange(W)), dim=-1).reshape(-1, 2).to(device) # HWx2
+    print(uv.device)
+    rays_o, rays_d = pixel_to_ray(K, c2w, uv)
+
+    return rays_o, rays_d
+
+def get_scene_image(model, c2w, K, device):
+    """
+        Inputs:
+            model: model to render the image
+            c2w: 4x4 matrix containing the inverse of the extrinsic matrix
+            K: 3x3 matrix containing the intrinsic matrix
+
+        Outputs:
+            image: H x W x 3 tensor containing the rendered image
+    """
+    H, W = 200, 200
+    rays_o, rays_d = sample_rays_single_image(c2w, K, H, W, device)
+    samples = RayDataset.sample_along_rays(rays_o, rays_d, perturb=False, n_samples=64)
+
+    with torch.no_grad():
+        rgb = model(samples, rays_d)
+
+    image = rgb.reshape(H, W, 3) * 255
+    return image
