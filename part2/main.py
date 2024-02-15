@@ -1,6 +1,8 @@
 import torch
 from torch.utils.data import Dataset
 import numpy as np
+import imageio
+
 
 def PSNR(mse, mse_reduction='mean', N=None):
     if mse_reduction == 'sum':
@@ -76,8 +78,8 @@ def pixel_to_ray(K, c2w, uv):
 class RayDataset(Dataset):
     def __init__(self, images, c2w, focal):
         self.ims = torch.from_numpy(images).to(torch.float32)
-        if self.ims.max() > 1:
-            self.ims /= 255
+        # if self.ims.max() > 1:
+        #     self.ims /= 255
         # self.im_height = np.array([im.shape[0] for im in self.ims])
         # self.im_width = np.array([im.shape[1] for im in self.ims])
         # self.sizes = self.im_height * self.im_width
@@ -211,7 +213,6 @@ def sample_rays_single_image(c2w, K, H, W, device):
             rays_d: H*W x 3 tensor containing the direction of the rays in world space
     """
     uv = torch.stack(torch.meshgrid(torch.arange(H), torch.arange(W)), dim=-1).reshape(-1, 2).to(device) # HWx2
-    print(uv.device)
     rays_o, rays_d = pixel_to_ray(K, c2w, uv)
 
     return rays_o, rays_d
@@ -227,11 +228,33 @@ def get_scene_image(model, c2w, K, device):
             image: H x W x 3 tensor containing the rendered image
     """
     H, W = 200, 200
+    c2w = c2w.unsqueeze(0).expand(H*W, -1, -1)
     rays_o, rays_d = sample_rays_single_image(c2w, K, H, W, device)
     samples = RayDataset.sample_along_rays(rays_o, rays_d, perturb=False, n_samples=64)
 
     with torch.no_grad():
         rgb = model(samples, rays_d)
 
-    image = rgb.reshape(H, W, 3) * 255
+    image = rgb.reshape(H, W, 3).transpose(0, 1)
     return image
+
+def render_scene(model, c2w, K, device):
+    """
+        Inputs:
+            model: model to render the image
+            c2w: N x 4x4 matrix containing the inverse of the extrinsic matrix
+            K: 3x3 matrix containing the intrinsic matrix
+
+        Outputs:
+            images: N x H x W x 3 tensor containing the rendered images
+    """
+    images = []
+    for i in range(c2w.shape[0]):
+        images.append(get_scene_image(model, c2w[i], K, device))
+    return torch.stack(images)
+
+def get_gif(model, c2w, K, device, path):
+    c2w = torch.from_numpy(c2w).to(device).to(torch.float32)
+    images = render_scene(model, c2w, K, device)
+    images = (images.detach().cpu().numpy() * 255).astype(np.uint8)
+    imageio.mimsave(path, images, fps=10)

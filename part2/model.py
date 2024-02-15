@@ -87,13 +87,13 @@ class Net3d(nn.Module):
         x_enc = self.pe_x(x).flatten(start_dim=1) # N' x 3*(L*2+1)
         rd_enc = self.pe_rd(rd).flatten(start_dim=1) # N' x 3*(L*2+1)
 
-        emb1 = self.mlp1(x_enc)
-        emb1 = torch.cat([emb1, x_enc], dim=-1)
-        emb2 = self.mlp2(emb1)
+        emb = self.mlp1(x_enc)
+        emb = torch.cat([emb, x_enc], dim=-1)
+        emb = self.mlp2(emb)
 
-        density = self.density_head(emb2)
+        density = self.density_head(emb)
 
-        c1 = self.pre_mix_head(emb2)
+        c1 = self.pre_mix_head(emb)
         c1 = torch.cat([c1, rd_enc], dim=-1)
         color = self.color_head(c1)
 
