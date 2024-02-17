@@ -12,6 +12,7 @@ class PositionalEncoding(nn.Module):
     def forward(self, x):
         freq = 2**torch.arange(0, self.L, 1).float().to(x.device) * pi * x.unsqueeze(-1)
         result = torch.cat([x.unsqueeze(-1), torch.sin(freq), torch.cos(freq)], dim=-1)
+        result = result.flatten(start_dim=-2)
         # N x n x L*2+1
         return result
     
@@ -79,13 +80,13 @@ class Net3d(nn.Module):
         rd = x.to(self.device) # N x n_samples x 3
 
         N, n_samples, _ = x.shape
-        rd = rd.expand(N, n_samples, 3)
+        # rd = rd.expand(N, n_samples, 3)
 
-        x = x.reshape(-1, 3) # N' x 3
-        rd = rd.reshape(-1, 3) # N' x 3
+        # x = x.reshape(-1, 3) # N' x 3
+        # rd = rd.reshape(-1, 3) # N' x 3
 
-        x_enc = self.pe_x(x).flatten(start_dim=1) # N' x 3*(L*2+1)
-        rd_enc = self.pe_rd(rd).flatten(start_dim=1) # N' x 3*(L*2+1)
+        x_enc = self.pe_x(x) # N' x 3*(L*2+1)
+        rd_enc = self.pe_rd(rd) # N' x 3*(L*2+1)
 
         emb = self.mlp1(x_enc)
         emb = torch.cat([emb, x_enc], dim=-1)
@@ -97,7 +98,6 @@ class Net3d(nn.Module):
         c1 = torch.cat([c1, rd_enc], dim=-1)
         color = self.color_head(c1)
 
-        color = color.reshape(N, n_samples, 3)
-        density = density.reshape(N, n_samples, 1)
-
-        return volrender(density, color, (6.0 - 2.0) / n_samples, device=self.device)
+        # color = color.reshape(N, n_samples, 3)
+        # density = density.reshape(N, n_samples, 1)
+        return color, density

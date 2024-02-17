@@ -149,7 +149,7 @@ class RayDataset(Dataset):
         return rays_o, rays_d, pixels
     
     @staticmethod
-    def sample_along_rays(rays_o, rays_d, perturb=True, n_samples=64, near=2.0, far=6.0, t_width=1):
+    def sample_along_rays(rays_o, rays_d, perturb=True, n_samples=64, near=2.0, far=6.0):
         """
             Inputs:
                 rays_o: N x 3 tensor containing the origin of the rays in world space
@@ -160,13 +160,11 @@ class RayDataset(Dataset):
                 samples: N x n_samples x 3 tensor containing the samples along the rays
         """
         t = torch.linspace(near, far, n_samples)
+        t_width = (far - near) / n_samples
         if perturb:
-            t += torch.rand_like(t) * t_width # n_samples
+            t = t + torch.rand_like(t) * t_width # n_samples
 
-        t = t.expand(rays_o.shape[0], n_samples) # N x n_samples
-        t = t.unsqueeze(-1) # N x n_samples x 1
-
-        samples = rays_o.unsqueeze(1) + rays_d.unsqueeze(1) * t # N x n_samples x 3
+        samples = rays_o.unsqueeze(1) + rays_d.unsqueeze(1) * t.expand(rays_o.shape[0], n_samples).unsqueeze(-1) # N x n_samples x 3
         return samples
 
     # def __getitem__(self, idx):
@@ -231,11 +229,13 @@ def get_scene_image(model, c2w, K, device):
     c2w = c2w.unsqueeze(0).expand(H*W, -1, -1)
     rays_o, rays_d = sample_rays_single_image(c2w, K, H, W, device)
     samples = RayDataset.sample_along_rays(rays_o, rays_d, perturb=False, n_samples=64)
+    rays_d = rays_d.unsqueeze(1).expand(-1, samples.shape[1], -1)
 
     with torch.no_grad():
-        rgb = model(samples, rays_d)
+        rgb, density = model(samples, rays_d)
+        rgb_pred = volrender(density.to(device), rgb.to(device), (6.0 - 2.0)/64, device)
 
-    image = rgb.reshape(H, W, 3).transpose(0, 1)
+    image = rgb_pred.reshape(H, W, 3).transpose(0, 1)
     return image
 
 def render_scene(model, c2w, K, device):

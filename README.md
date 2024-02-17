@@ -20,4 +20,6 @@ TODOS:
 - [x] Impl: Sampling points along rays
 - [x] Impl: Network
 - [x] Impl: Volume rendering equation
-- [ ] Impl: Writing loss function, training loop and putting it all together
+- [x] Impl: Writing loss function, training loop and putting it all together
+
+![Lego NeRF](https://github.com/aviral2004/nerf_from_scratch/blob/main/part2/lego.gif "Lego NeRF")
